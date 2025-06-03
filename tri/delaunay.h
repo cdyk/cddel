@@ -33,6 +33,8 @@ struct Triangulation
   Triangulation(const Triangulation&) = delete;
   Triangulation& operator=(const Triangulation&) = delete;
 
+  VtxIx insertVertex(uint8_t x, uint8_t y);
+
   Vertex* vtx = nullptr;
   HalfEdge* he = nullptr;
 

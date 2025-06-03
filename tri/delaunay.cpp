@@ -1,3 +1,5 @@
+#include <algorithm> 
+#include <cassert>
 #include <cstdlib>
 #include <cstdio>
 #include "delaunay.h"
@@ -60,4 +62,20 @@ Triangulation::Triangulation()
 Triangulation::~Triangulation()
 {
 
+}
+
+
+VtxIx Triangulation::insertVertex(uint8_t x, uint8_t y)
+{
+  if (vtxAlloc <= vtxCount) {
+    vtxAlloc += std::max(1024u, vtxAlloc / 2);
+    vtx = (Vertex*)xrealloc(vtx, sizeof(Vertex) * vtxAlloc);
+  }
+  assert(vtxCount < vtxAlloc);
+
+  VtxIx ix = vtxCount++;
+
+  vtx[ix].x = x;
+  vtx[ix].y = y;
+  return ix;
 }

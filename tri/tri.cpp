@@ -18,6 +18,8 @@ namespace {
   SDL_Window* window = nullptr;
   SDL_Renderer* renderer = nullptr;
 
+  Uint64 lastUpdateTicks = 0;
+
 }
 
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv)
@@ -36,6 +38,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv)
 
   tri = new Triangulation();
 
+  std::srand(42);
   return SDL_APP_CONTINUE;
 }
 
@@ -61,6 +64,8 @@ SDL_AppResult SDL_AppIterate(void* appstate)
     return SDL_APP_FAILURE;
   }
 
+
+
   int w = 0;
   int h = 0;
   SDL_GetWindowSizeInPixels(window, &w, &h);
@@ -72,6 +77,16 @@ SDL_AppResult SDL_AppIterate(void* appstate)
   float yscale = -s / 0xff;
 
   SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+
+  Uint64 ticks = SDL_GetTicks();
+  if (300 < ticks - lastUpdateTicks) {
+    lastUpdateTicks = ticks;
+
+    uint8_t x = std::rand();
+    uint8_t y = std::rand();
+    tri->insertVertex(x, y);
+  }
+
   SDL_RenderClear(renderer);
 
 
