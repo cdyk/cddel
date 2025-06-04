@@ -33,30 +33,193 @@ namespace {
     exit(EXIT_FAILURE);
   }
 
+  uint32_t allocSize(uint32_t minimum, uint32_t allocated)
+  {
+    uint64_t grow = std::max(std::max(minimum, 1024u), (allocated + 1) / 2);
+    uint32_t size = uint32_t(std::min(uint64_t(NoIx), uint64_t(allocated) + grow));
+    assert(minimum <= size);
+    return size;
+  }
+
+  VtxIx allocVtx(Triangulation& triang, uint32_t count = 1)
+  {
+    uint32_t newCount = triang.vtxCount + count;
+    assert(0 < count);
+    assert(triang.vtxCount < newCount);
+    if (triang.vtxAlloc < newCount) {
+      triang.vtxAlloc = allocSize(newCount, triang.vtxAlloc);
+      triang.vtx = (Vertex*)xrealloc(triang.vtx, sizeof(Vertex) * triang.vtxAlloc);
+    }
+    VtxIx firstIx = triang.vtxCount;
+    triang.vtxCount += count;
+    return firstIx;
+  }
+
+  HeIx allocHe(Triangulation& triang, uint32_t count = 1)
+  {
+    uint32_t newCount = triang.heCount + count;
+    assert(0 < count);
+    assert(triang.heCount < newCount);
+    if (triang.heAlloc < newCount) {
+      triang.heAlloc = allocSize(newCount, triang.heAlloc);
+      triang.he = (HalfEdge*)xrealloc(triang.he, sizeof(HalfEdge) * triang.heAlloc);
+    }
+    HeIx firstIx = triang.heCount;
+    triang.heCount += count;
+
+    for (size_t i = firstIx; i < triang.heCount; i++) {
+      triang.he[i].vtx = NoIx;
+      triang.he[i].nxt = NoIx;
+      triang.he[i].twin = NoIx;
+    }
+
+    return firstIx;
+  }
+
+  int areaSign(const Pos& p1, const Pos& p2, const Pos& p3)
+  {
+    uint16_t x1y2 = p1.x * p2.y;
+    uint16_t x2y3 = p2.x * p3.y;
+    uint16_t x3y1 = p3.x * p1.y;
+    uint32_t a = uint32_t(x1y2) + uint32_t(x2y3) + uint32_t(x3y1);
+
+    uint16_t x1y3 = p1.x * p3.y;
+    uint16_t x2y1 = p2.x * p1.y;
+    uint16_t x3y2 = p3.x * p2.y;
+    uint32_t b = uint32_t(x1y3) + uint32_t(x2y1) + uint32_t(x3y2);
+
+    if (a < b) return -1;
+    if (b < a) return 1;
+    return 0;
+  }
+
+  void disconnectHalfEdge(Triangulation& triang, HeIx he)
+  {
+    HalfEdge& e = triang.he[he];
+    if (e.twin != NoIx) {
+      triang.he[e.twin].twin = NoIx;
+      e.twin = NoIx;
+    }
+    e.vtx = NoIx;
+    e.nxt = NoIx;
+  }
+
+  void connectHalfEdge(Triangulation& triang, HeIx curr, HeIx next, HeIx twin, VtxIx vtx)
+  {
+    assert(curr != NoIx && next != NoIx && vtx != NoIx) ;
+    HalfEdge& e = triang.he[curr];
+    assert(e.vtx == NoIx);
+    assert(e.nxt == NoIx);
+    assert(e.twin == NoIx);
+    e.vtx = vtx;
+    e.nxt = next;
+    if (twin != NoIx) {
+      e.twin = twin;
+      assert(triang.he[twin].twin == NoIx);
+      triang.he[twin].twin = curr;
+    }
+  }
+
+  void disconnectTriangle(Triangulation& triang, HeIx he0)
+  {
+    HeIx he1 = triang.he[he0].nxt;
+    HeIx he2 = triang.he[he1].nxt;
+    disconnectHalfEdge(triang, he0);
+    disconnectHalfEdge(triang, he1);
+    disconnectHalfEdge(triang, he2);
+  }
+
+  void connectTriangle(Triangulation& triang,
+                       HeIx he0, HeIx tw0, VtxIx v0,
+                       HeIx he1, HeIx tw1, VtxIx v1,
+                       HeIx he2, HeIx tw2, VtxIx v2)
+  {
+    connectHalfEdge(triang, he0, he1, tw0, v0);
+    connectHalfEdge(triang, he1, he2, tw1, v1);
+    connectHalfEdge(triang, he2, he0, tw2, v2);
+  }
+
+  HeIx findContainingTriangle(const Triangulation& triang, int (&signs)[3], const Pos& pos, HeIx startingPoint)
+  {
+    HeIx he = startingPoint;
+
+    restart:
+      for (size_t i = 0; i < 3; i++) {
+        HalfEdge& c = triang.he[he];
+        HalfEdge& n = triang.he[c.nxt];
+        Vertex& a = triang.vtx[c.vtx];
+        Vertex& b = triang.vtx[n.vtx];
+
+        signs[i] = areaSign(a.pos, b.pos, pos);
+        if (signs[i] < 0) {
+          assert(c.twin != NoIx); // Going outside of triangulation.
+          he = c.twin;
+          goto restart;
+        }
+        he = c.nxt;
+      }
+      return he;
+  }
+
+  void splitTriangle(Triangulation& triang, HeIx he0, VtxIx mid)
+  {
+    HeIx he1 = triang.he[he0].nxt;
+    HeIx he2 = triang.he[he1].nxt;
+
+    VtxIx v0 = triang.he[he0].vtx;
+    VtxIx v1 = triang.he[he1].vtx;
+    VtxIx v2 = triang.he[he2].vtx;
+
+    HeIx tw0 = triang.he[he0].twin;
+    HeIx tw1 = triang.he[he1].twin;
+    HeIx tw2 = triang.he[he2].twin;
+
+    HeIx he3 = allocHe(triang, 6);
+
+    disconnectTriangle(triang, he0);
+    connectTriangle(triang,
+                    he0, tw0, v0,
+                    he1, NoIx, v1,
+                    he2, NoIx, mid);
+    connectTriangle(triang,
+                    he3 + 0, tw1, v1,
+                    he3 + 1, NoIx, v2,
+                    he3 + 2, he1, mid);
+    connectTriangle(triang,
+                    he3 + 3, tw2, v2,
+                    he3 + 4, he2, v0,
+                    he3 + 5, he3 + 1, mid);
+  }
+
+
 }
 
 Triangulation::Triangulation()
 {
-  vtxAlloc = 100;
-  vtx = (Vertex*)xmalloc(sizeof(Vertex) * vtxAlloc);
+  VtxIx v = allocVtx(*this, 4);
+  vtx[v + 0] = { .pos = { 0,  0 } };
+  vtx[v + 1] = { .pos = { 255,  0 } };
+  vtx[v + 2] = { .pos = { 255,  255 } };
+  vtx[v + 3] = { .pos = { 0,  255 }  };
 
-  vtxCount = 4;
-  vtx[0] = { 0,  0 };
-  vtx[1] = { 255,  0 };
-  vtx[2] = { 255,  255 };
-  vtx[3] = { 0,  255 };
+  HeIx h = allocHe(*this, 6);
 
-  heAlloc = 100;
-  he = (HalfEdge*)xmalloc(sizeof(HalfEdge) * vtxAlloc);
+  connectTriangle(*this,
+                  h + 0, NoIx, 0,
+                  h + 1, NoIx, 1,
+                  h + 2, NoIx, 2);
 
-  heCount = 6;
-  he[0] = { .vtx = 0, .nxt = 1, .twin = NoIx };
-  he[1] = { .vtx = 1, .nxt = 2, .twin = NoIx };
-  he[2] = { .vtx = 2, .nxt = 0, .twin = 5 };
+  connectTriangle(*this,
+                  h + 3, NoIx, 2,
+                  h + 4, NoIx, 3,
+                  h + 5, h + 2, 0);
 
-  he[3] = { .vtx = 2, .nxt = 4, .twin = NoIx };
-  he[4] = { .vtx = 3, .nxt = 5, .twin = NoIx };
-  he[5] = { .vtx = 0, .nxt = 3, .twin = 2 };
+  assert(0 < areaSign(vtx[he[h + 0].vtx].pos,
+                      vtx[he[h + 1].vtx].pos,
+                      vtx[he[h + 2].vtx].pos));
+  assert(0 < areaSign(vtx[he[h + 3].vtx].pos,
+                      vtx[he[h + 4].vtx].pos,
+                      vtx[he[h + 5].vtx].pos));
 }
 
 Triangulation::~Triangulation()
@@ -65,17 +228,19 @@ Triangulation::~Triangulation()
 }
 
 
-VtxIx Triangulation::insertVertex(uint8_t x, uint8_t y)
+VtxIx insertVertex(Triangulation& triang, const Pos& pos)
 {
-  if (vtxAlloc <= vtxCount) {
-    vtxAlloc += std::max(1024u, vtxAlloc / 2);
-    vtx = (Vertex*)xrealloc(vtx, sizeof(Vertex) * vtxAlloc);
+  int signs[3] = {};
+
+  HeIx he = findContainingTriangle(triang, signs, pos, 0);
+  if (signs[0] + signs[1] + signs[2] != 3) {
+    fprintf(stderr, "On boundary\n");
+    return NoIx;
   }
-  assert(vtxCount < vtxAlloc);
 
-  VtxIx ix = vtxCount++;
+  VtxIx v = allocVtx(triang);
+  triang.vtx[v].pos = pos;
 
-  vtx[ix].x = x;
-  vtx[ix].y = y;
-  return ix;
+  splitTriangle(triang, he, v);
+  return v;
 }

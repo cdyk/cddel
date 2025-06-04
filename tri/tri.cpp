@@ -20,6 +20,7 @@ namespace {
 
   Uint64 lastUpdateTicks = 0;
 
+
 }
 
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv)
@@ -55,6 +56,9 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event)
   if (event->type == SDL_EVENT_QUIT) {
     return SDL_APP_SUCCESS;
   }
+  else if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_ESCAPE) {
+    return SDL_APP_SUCCESS;
+  }
   return SDL_APP_CONTINUE;
 }
 
@@ -63,8 +67,6 @@ SDL_AppResult SDL_AppIterate(void* appstate)
   if (tri == nullptr) {
     return SDL_APP_FAILURE;
   }
-
-
 
   int w = 0;
   int h = 0;
@@ -82,14 +84,14 @@ SDL_AppResult SDL_AppIterate(void* appstate)
   if (300 < ticks - lastUpdateTicks) {
     lastUpdateTicks = ticks;
 
-    uint8_t x = std::rand();
-    uint8_t y = std::rand();
-    tri->insertVertex(x, y);
+    Pos p {
+      .x = uint8_t(std::rand()),
+      .y = uint8_t(std::rand())
+    };
+    insertVertex(*tri, p);
   }
 
   SDL_RenderClear(renderer);
-
-
   for (size_t i = 0; i < tri->heCount; i++) {
     const HalfEdge& he = tri->he[i];
     if (he.twin != NoIx && tri->he[he.twin].vtx < he.vtx) {
@@ -106,18 +108,18 @@ SDL_AppResult SDL_AppIterate(void* appstate)
       SDL_SetRenderDrawColorFloat(renderer, 1.f, 1.f, 1.f, 1.f);
     }
     SDL_RenderLine(renderer,
-                   xo + xscale * v0.x,
-                   yo + yscale * v0.y,
-                   xo + xscale * v1.x,
-                   yo + yscale * v1.y);
+                   xo + xscale * v0.pos.x,
+                   yo + yscale * v0.pos.y,
+                   xo + xscale * v1.pos.x,
+                   yo + yscale * v1.pos.y);
   }
 
 
   SDL_SetRenderDrawColorFloat(renderer, 1.f, 0.f, 0.f, 1.f);
   for (size_t i = 0; i < tri->vtxCount; i++) {
     SDL_FRect rect{
-      .x = xo + xscale * tri->vtx[i].x - 2,
-      .y = yo + yscale * tri->vtx[i].y - 2,
+      .x = xo + xscale * tri->vtx[i].pos.x - 2,
+      .y = yo + yscale * tri->vtx[i].pos.y - 2,
       .w = 5,
       .h = 5
     };
