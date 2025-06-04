@@ -366,30 +366,47 @@ Triangulation::~Triangulation()
 }
 
 
-VtxIx insertVertex(Triangulation& triang, const Pos& pos)
+VtxIx insertVertex(Triangulation& T, const Pos& pos)
 {
   int signs[3] = {};
 
-  HeIx he = findContainingTriangle(triang, signs, pos, 0);
-  if (signs[0] + signs[1] + signs[2] != 3) {
-    fprintf(stderr, "On boundary\n");
+  HeIx he = findContainingTriangle(T, signs, pos, 0);
+  int signSum = signs[0] + signs[1] + signs[2];
+  if (signSum == 0) {
+    // Degnerate triangle
+    assert(false);
+  }
+  else if (signSum == 1) {
+
+    for (int i = 0; i < 3; i++) {
+      VtxIx v = vertex(T, he);
+      if (T.vtx[v].pos.x == pos.x && T.vtx[v].pos.y == pos.y) {
+        fprintf(stderr, "Duplicate point\n");
+        return v;
+      }
+      he = next(T, he);
+    }
+    assert(false);
+  }
+  else if (signSum == 2) {
+    fprintf(stderr, "On edge\n");
     return NoIx;
   }
 
-  VtxIx v = allocVtx(triang);
-  triang.vtx[v].pos = pos;
+  VtxIx v = allocVtx(T);
+  T.vtx[v].pos = pos;
 
   std::vector<HeIx> todo;
   {
     HeIx e = he;
     for (int i = 0; i < 3; i++) {
-      todo.push_back(twin(triang, e));
-      e = next(triang, e);
+      todo.push_back(twin(T, e));
+      e = next(T, e);
     }
   }
-  splitTriangle(triang, he, v);
+  splitTriangle(T, he, v);
 
-  recursiveDelaunaySwap(triang, todo);
+  recursiveDelaunaySwap(T, todo);
 
   return v;
 }
