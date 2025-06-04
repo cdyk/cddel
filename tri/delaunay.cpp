@@ -250,36 +250,6 @@ namespace {
       return he;
   }
 
-  void splitTriangle(Triangulation& triang, HeIx he0, VtxIx mid)
-  {
-    HeIx he1 = triang.he[he0].nxt;
-    HeIx he2 = triang.he[he1].nxt;
-
-    VtxIx v0 = triang.he[he0].vtx;
-    VtxIx v1 = triang.he[he1].vtx;
-    VtxIx v2 = triang.he[he2].vtx;
-
-    HeIx tw0 = triang.he[he0].twin;
-    HeIx tw1 = triang.he[he1].twin;
-    HeIx tw2 = triang.he[he2].twin;
-
-    HeIx he3 = allocHe(triang, 6);
-
-    disconnectTriangle(triang, he0);
-    connectTriangle(triang,
-                    he0, tw0, v0,
-                    he1, NoIx, v1,
-                    he2, NoIx, mid);
-    connectTriangle(triang,
-                    he3 + 0, tw1, v1,
-                    he3 + 1, NoIx, v2,
-                    he3 + 2, he1, mid);
-    connectTriangle(triang,
-                    he3 + 3, tw2, v2,
-                    he3 + 4, he2, v0,
-                    he3 + 5, he3 + 1, mid);
-  }
-
   void recursiveDelaunaySwap(Triangulation& T, std::vector<HeIx>& todo)
   {
     while (!todo.empty()) {
@@ -328,6 +298,39 @@ namespace {
       todo.push_back(t2);
       todo.push_back(t3);
     }
+  }
+
+  void splitTriangle(Triangulation& T, HeIx he0, VtxIx mid)
+  {
+    HeIx he1 = T.he[he0].nxt;
+    HeIx he2 = T.he[he1].nxt;
+
+    VtxIx v0 = T.he[he0].vtx;
+    VtxIx v1 = T.he[he1].vtx;
+    VtxIx v2 = T.he[he2].vtx;
+
+    HeIx tw0 = T.he[he0].twin;
+    HeIx tw1 = T.he[he1].twin;
+    HeIx tw2 = T.he[he2].twin;
+
+    HeIx he3 = allocHe(T, 6);
+
+    disconnectTriangle(T, he0);
+    connectTriangle(T,
+                    he0, tw0, v0,
+                    he1, NoIx, v1,
+                    he2, NoIx, mid);
+    connectTriangle(T,
+                    he3 + 0, tw1, v1,
+                    he3 + 1, NoIx, v2,
+                    he3 + 2, he1, mid);
+    connectTriangle(T,
+                    he3 + 3, tw2, v2,
+                    he3 + 4, he2, v0,
+                    he3 + 5, he3 + 1, mid);
+
+    std::vector<HeIx> todo = { tw0, tw1, tw2 };
+    recursiveDelaunaySwap(T, todo);
   }
 
 }
@@ -396,17 +399,7 @@ VtxIx insertVertex(Triangulation& T, const Pos& pos)
   VtxIx v = allocVtx(T);
   T.vtx[v].pos = pos;
 
-  std::vector<HeIx> todo;
-  {
-    HeIx e = he;
-    for (int i = 0; i < 3; i++) {
-      todo.push_back(twin(T, e));
-      e = next(T, e);
-    }
-  }
   splitTriangle(T, he, v);
-
-  recursiveDelaunaySwap(T, todo);
 
   return v;
 }
