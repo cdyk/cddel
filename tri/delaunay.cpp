@@ -301,6 +301,84 @@ namespace {
     }
   }
 
+  void splitEdge(Triangulation& T, HeIx a0, VtxIx mid)
+  {
+    //             v0                            v0
+    //           / | \                         / | \
+    //          /  |  \                       /  |  \   
+    //         /   |   \                     /   |   \
+    //     n0 /    |    \ n3             n0 /    |    \ n3
+    //       /c1   |   a2\                 /c1 c0|b0 b2\
+    //      /      |      \               /      |      \
+    //     /       |       \             /   c2  |  b1   \
+    // v1 +      c0|a0      + v3  =>  v1 +------ m -------+ v3
+    //     \       |       /             \   d1  |  a2   /
+    //      \      |      /               \      |      /
+    //       \c2   |   a1/                 \d2 d0|a0 a1/
+    //     n1 \    |    / n2             n1 \    |    / n2
+    //         \   |   /                     \   |   /
+    //          \  |  /                       \  |  /
+    //           \ | /                         \ | /
+    //             v2                            v2
+    HeIx c0 = twin(T, a0);
+    bool onBoundary = c0 == NoIx;
+
+    HeIx a1 = next(T, a0);
+    HeIx a2 = next(T, a1);
+
+    HeIx n2 = twin(T, a1);
+    HeIx n3 = twin(T, a2);
+
+    VtxIx v0 = vertex(T, a0);
+    VtxIx v2 = vertex(T, a1);
+    VtxIx v3 = vertex(T, a2);
+
+    HeIx b0 = allocHe(T, onBoundary ? 3 : 6);
+    HeIx b1 = b0 + 1;
+    HeIx b2 = b0 + 2;
+
+    HeIx d0 = onBoundary ? NoIx : (b0 + 3);
+
+    T.he[a0] = { .vtx = mid, .nxt = a1, .twin = d0 };
+    T.he[a1] = { .vtx = v2,  .nxt = a2, .twin = n2 };
+    T.he[a2] = { .vtx = v3,  .nxt = a0, .twin = b1 };
+    if (n2 != NoIx) T.he[n2].twin = a1;
+
+    T.he[b0] = { .vtx = v0,  .nxt = b1, .twin = c0 };
+    T.he[b1] = { .vtx = mid, .nxt = b2, .twin = a2 };
+    T.he[b2] = { .vtx = v3,  .nxt = b0, .twin = n3 };
+    if (n3 != NoIx) T.he[n3].twin = b2;
+
+    if (onBoundary) {
+      std::vector<HeIx> todo = { a1, a2, b2 };
+      recursiveDelaunaySwap(T, todo);
+    }
+    else {
+      HeIx c1 = next(T, c0);
+      HeIx c2 = next(T, c1);
+      HeIx d1 = b0 + 4;
+      HeIx d2 = b0 + 5;
+
+      HeIx n0 = twin(T, c1);
+      HeIx n1 = twin(T, c2);
+
+      VtxIx v1 = vertex(T, c2);
+
+      T.he[c0] = { .vtx = mid, .nxt = c1, .twin = b0 };
+      T.he[c1] = { .vtx = v0,  .nxt = c2, .twin = n0 };
+      T.he[c2] = { .vtx = v1,  .nxt = c0, .twin = d1 };
+      if(n0 != NoIx) T.he[n0].twin = c1;
+
+      T.he[d0] = { .vtx = v2,  .nxt = d1, .twin = a0 };
+      T.he[d1] = { .vtx = mid, .nxt = d2, .twin = c2 };
+      T.he[d2] = { .vtx = v1,  .nxt = d0, .twin = n1 };
+      if (n1 != NoIx) T.he[n1].twin = d2;
+
+      std::vector<HeIx> todo = { a0, a1, a2, b0, b2, c1, c2, d2 };
+      recursiveDelaunaySwap(T, todo);
+    }
+  }
+
   void splitTriangle(Triangulation& T, HeIx he0, VtxIx mid)
   {
     HeIx he1 = T.he[he0].nxt;
@@ -401,7 +479,11 @@ VtxIx insertVertex(Triangulation& T, const Pos& pos)
     const Pos& a = T.vtx[vertex(T, he)].pos;
     const Pos& b = T.vtx[vertex(T, next(T, he))].pos;
     assert(areaSign(a, b, pos) == 0);
-    return NoIx;
+
+    VtxIx v = allocVtx(T);
+    T.vtx[v].pos = pos;
+    splitEdge(T, he, v);
+    return v;
   }
 
   // Point in the interior of the triangle
