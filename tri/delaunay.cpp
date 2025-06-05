@@ -228,7 +228,7 @@ namespace {
     connectHalfEdge(triang, he2, he0, tw2, v2);
   }
 
-  HeIx findContainingTriangle(const Triangulation& triang, int (&signs)[3], const Pos& pos, HeIx startingPoint)
+  HeIx findContainingTriangle(const Triangulation& triang, bool (&inside)[3], const Pos& pos, HeIx startingPoint)
   {
     HeIx he = startingPoint;
 
@@ -239,12 +239,13 @@ namespace {
         Vertex& a = triang.vtx[c.vtx];
         Vertex& b = triang.vtx[n.vtx];
 
-        signs[i] = areaSign(a.pos, b.pos, pos);
-        if (signs[i] < 0) {
+        int sign = areaSign(a.pos, b.pos, pos);
+        if (sign < 0) {
           assert(c.twin != NoIx); // Going outside of triangulation.
           he = c.twin;
           goto restart;
         }
+        inside[i] = 0 < sign;
         he = c.nxt;
       }
       return he;
@@ -371,35 +372,48 @@ Triangulation::~Triangulation()
 
 VtxIx insertVertex(Triangulation& T, const Pos& pos)
 {
-  int signs[3] = {};
+  bool inside[3] = {};
 
-  HeIx he = findContainingTriangle(T, signs, pos, 0);
-  int signSum = signs[0] + signs[1] + signs[2];
-  if (signSum == 0) {
-    // Degnerate triangle
-    assert(false);
-  }
-  else if (signSum == 1) {
+  HeIx he = findContainingTriangle(T, inside, pos, 0);
+  if (he == NoIx) return NoIx;
 
-    for (int i = 0; i < 3; i++) {
-      VtxIx v = vertex(T, he);
-      if (T.vtx[v].pos.x == pos.x && T.vtx[v].pos.y == pos.y) {
-        fprintf(stderr, "Duplicate point\n");
-        return v;
-      }
-      he = next(T, he);
-    }
-    assert(false);
+  size_t insideCase = (inside[0] ? 1 : 0) + (inside[1] ? 2 : 0) + (inside[2] ? 4 : 0);
+  switch (insideCase) {
+
+  // Point on three edges boundary => degenerate triangle.
+  case 0b000:
+    assert(false && "Hit degenerate triangle");
+    return NoIx;
+
+  // Point on two edges => lies on a corner
+  case 0b001: he = next(T, he); [[fallthrough]];
+  case 0b100: he = next(T, he); [[fallthrough]];
+  case 0b010: {
+    VtxIx v = vertex(T, he);
+    assert(T.vtx[v].pos.x == pos.x && T.vtx[v].pos.y == pos.y);
+    return v;
   }
-  else if (signSum == 2) {
-    fprintf(stderr, "On edge\n");
+
+  // Point on one edge => lies in the interior of an edge
+  case 0b011: he = next(T, he); [[fallthrough]];
+  case 0b101: he = next(T, he); [[fallthrough]];
+  case 0b110: {
+    const Pos& a = T.vtx[vertex(T, he)].pos;
+    const Pos& b = T.vtx[vertex(T, next(T, he))].pos;
+    assert(areaSign(a, b, pos) == 0);
     return NoIx;
   }
 
-  VtxIx v = allocVtx(T);
-  T.vtx[v].pos = pos;
+  // Point in the interior of the triangle
+  case 0b111: {
+    VtxIx v = allocVtx(T);
+    T.vtx[v].pos = pos;
+    splitTriangle(T, he, v);
+    return v;
+  }
 
-  splitTriangle(T, he, v);
-
-  return v;
+  default:
+    assert(false);
+    return NoIx;
+  }
 }
