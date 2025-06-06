@@ -34,6 +34,39 @@ namespace {
     exit(EXIT_FAILURE);
   }
 
+  // -------------------------------------------------------------------------
+
+  template<size_t N>
+  struct Int {
+    static constexpr uint64_t Zeros = 0;
+    static constexpr uint64_t Ones = ~uint64_t(0);
+    uint64_t word[N];
+  };
+
+  template<size_t N>
+  Int<N> add(const Int<N>& x, const Int<N>& y)
+  {
+    Int<N> r{};
+    uint8_t c = 0;
+    for (size_t i = 0; i < N; i++) {
+      c = _addcarry_u64(c, x.word[i], y.word[i], &r.word[i]);
+    }
+    return r;
+  }
+
+  template<size_t N>
+  Int<N> sub(const Int<N>& x, const Int<N>& y)
+  {
+    Int<N> r{};
+    uint8_t b = 0;
+    for (size_t i = 0; i < N; i++) {
+      b = _subborrow_u64(b, x.word[i], y.word[i], &r.word[i]);
+    }
+    return r;
+  }
+
+  // -------------------------------------------------------------------------
+
   VtxIx& vertex(const Triangulation& T, HeIx he)
   {
     assert(he != NoIx);
@@ -97,6 +130,30 @@ namespace {
 
   int areaSign(const Pos& p1, const Pos& p2, const Pos& p3)
   {
+#if 1
+    uint64_t x1 = uint64_t(p1.x) << 24u;    // 32 bits
+    uint64_t y1 = uint64_t(p1.y) << 24u;
+    uint64_t x2 = uint64_t(p2.x) << 24u;
+    uint64_t y2 = uint64_t(p2.y) << 24u;
+    uint64_t x3 = uint64_t(p3.x) << 24u;
+    uint64_t y3 = uint64_t(p3.y) << 24u;
+
+    Int<2> x1y2 { x1 * y2 };    // 64 bits extended to 128
+    Int<2> x2y3 { x2 * y3 };
+    Int<2> x3y1 { x3 * y1 };
+    Int<2> a = add(add(x1y2, x2y3), x3y1);  // 66 bits
+
+    Int<2> x1y3 { x1 * y3 };
+    Int<2> x2y1 { x2 * y1 };
+    Int<2> x3y2 { x3 * y2 };
+    Int<2> b = add(add(x1y3, x2y1), x3y2);  // 66 bits
+
+    Int<2> test = sub(a, b);
+
+    if ((test.word[1] | test.word[0])) {
+      return int64_t(test.word[1]) < 0 ? -1 : 1;
+    }
+#else
     uint16_t x1y2 = p1.x * p2.y;
     uint16_t x2y3 = p2.x * p3.y;
     uint16_t x3y1 = p3.x * p1.y;
@@ -109,6 +166,7 @@ namespace {
 
     if (a < b) return -1;
     if (b < a) return 1;
+#endif
     return 0;
   }
 
