@@ -65,6 +65,40 @@ namespace {
     return r;
   }
 
+  template<size_t N>
+  Int<2*N> muls(const Int<N>& x, const Int<N>& y)
+  {
+    Int<2*N> r{};
+
+    for (size_t j = 0; j < N; j++) {
+      uint64_t k = 0;
+      for (size_t i = 0; i < 2; i++) {
+        uint64_t hi;
+        uint64_t lo = _umul128(x.word[j], y.word[i], &hi);
+        uint8_t c0 = _addcarry_u64(0, lo, r.word[j + i], &lo);
+        uint8_t c1 = _addcarry_u64(0, lo, k, &r.word[j + i]);
+        k = hi + c0 + c1;
+      }
+      r.word[j + N] = k;
+    }
+
+    if (int64_t(y.word[N-1]) < 0) {
+      uint8_t b = 0;
+      for (size_t j = 0; j < N; j++) {
+        b = _subborrow_u64(b, r.word[N + j], x.word[j], &r.word[N + j]);
+      }
+    }
+
+    if (int64_t(x.word[N-1]) < 0) {
+      uint8_t b = 0;
+      for (size_t j = 0; j < N; j++) {
+        b = _subborrow_u64(b, r.word[N + j], y.word[j], &r.word[N + j]);
+      }
+    }
+
+    return r;
+  }
+
   // -------------------------------------------------------------------------
 
   VtxIx& vertex(const Triangulation& T, HeIx he)
@@ -172,6 +206,75 @@ namespace {
 
   int isDelaunay(const Pos& p1, const Pos& p2, const Pos& p3, const Pos& p4)
   {
+  #if 1
+    uint64_t x1 = uint64_t(p1.x) << 24u;    // 32 bits
+    uint64_t y1 = uint64_t(p1.y) << 24u;
+    uint64_t x2 = uint64_t(p2.x) << 24u;
+    uint64_t y2 = uint64_t(p2.y) << 24u;
+    uint64_t x3 = uint64_t(p3.x) << 24u;
+    uint64_t y3 = uint64_t(p3.y) << 24u;
+    uint64_t x4 = uint64_t(p4.x) << 24u;
+    uint64_t y4 = uint64_t(p4.y) << 24u;
+
+    Int<2> x1y2 { .word = { x1 * y2 } };    // 64 bits extended to 128
+    Int<2> x1y3 { .word = { x1 * y3 } };
+    Int<2> x1y4 { .word = { x1 * y4 } };
+    Int<2> x2y3 { .word = { x2 * y3 } };
+    Int<2> x2y1 { .word = { x2 * y1 } };
+    Int<2> x3y1 { .word = { x3 * y1 } };
+    Int<2> x3y2 { .word = { x3 * y2 } };
+    Int<2> x3y4 { .word = { x3 * y4 } };
+    Int<2> x4y1 { .word = { x4 * y1 } };
+    Int<2> x4y3 { .word = { x4 * y3 } };
+
+    Int<2> sin_123_a = add(add(x3y1, x1y2), x2y3);  // 66 bits
+    Int<2> sin_123_b = add(add(x2y1, x3y2), x1y3);
+    assert((sin_123_a.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
+    assert((sin_123_b.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
+    Int<2> sin_123 = sub(sin_123_a, sin_123_b);     // 67 bits
+
+    Int<2> sin_341_a = add(add(x4y1, x1y3), x3y4);
+    Int<2> sin_341_b = add(add(x4y3, x1y4), x3y1);
+    assert((sin_341_a.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
+    assert((sin_341_b.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
+    Int<2> sin_341 = sub(sin_341_a, sin_341_b);     // 67 bits
+
+    Int<2> x1x2 { .word = { x1 * x2 } };
+    Int<2> x1x3 { .word = { x1 * x3 } };
+    Int<2> x1x4 { .word = { x1 * x4 } };
+    Int<2> x2x2 { .word = { x2 * x2 } };
+    Int<2> x2x3 { .word = { x2 * x3 } };
+    Int<2> x3x4 { .word = { x3 * x4 } };
+    Int<2> x4x4 { .word = { x4 * x4 } };
+    Int<2> y1y2 { .word = { y1 * y2 } };
+    Int<2> y1y3 { .word = { y1 * y3 } };
+    Int<2> y1y4 { .word = { y1 * y4 } };
+    Int<2> y2y2 { .word = { y2 * y2 } };
+    Int<2> y2y3 { .word = { y2 * y3 } };
+    Int<2> y3y4 { .word = { y3 * y4 } };
+    Int<2> y4y4 { .word = { y4 * y4 } };
+
+    Int<2> cos_123_a = add(add(x2x2, x1x3), add(y2y2, y1y3));   // 66 bits
+    Int<2> cos_123_b = add(add(y2y3, x1x2), add(x2x3, y1y2));
+    assert((cos_123_a.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
+    assert((cos_123_b.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
+    Int<2> cos_123 = sub(cos_123_a, cos_123_b);                // 67 bits
+
+    Int<2> cos_341_a = add(add(x1x3, x4x4), add(y1y3, y4y4));
+    Int<2> cos_341_b = add(add(y1y4, y3y4), add(x1x4, x3x4));
+    assert((cos_341_a.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
+    assert((cos_341_b.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
+    Int<2> cos_341 = sub(cos_341_a, cos_341_b);                // 67 bits
+
+    Int<4> sin_123_cos_341 = muls(sin_123, cos_341);            // 134 bits (3 words suffices)
+    Int<4> cos_123_sin_341 = muls(cos_123, sin_341);
+
+    Int<4> test = add(sin_123_cos_341, cos_123_sin_341);
+
+    if ((test.word[3] | test.word[2] | test.word[1] | test.word[0])) {
+      return  int64_t(test.word[3]) < 0 ? -1 : 1;
+    }
+#else
     // Assuming the quadrilateral is split with the diagonal [p1,p3].
     // If pi < angle_123 + angle_341, the diagonal should be swapped.
     //
@@ -233,10 +336,9 @@ namespace {
 
 
     int64_t test = sin_123 * cos_341 + cos_123 * sin_341;
-
     if (0 < test) return 1;
     if (test < 0) return -1;
-
+#endif
     return 0;
   }
 
