@@ -10,13 +10,8 @@ typedef uint32_t HeIx;
 
 struct Pos
 {
-  union {
-    struct {
-      uint8_t x;
-      uint8_t y;
-    };
-    uint8_t data[2];
-  };
+  uint32_t x;
+  uint32_t y;
 };
 
 struct Vertex

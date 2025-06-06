@@ -75,8 +75,8 @@ SDL_AppResult SDL_AppIterate(void* appstate)
   float s = 0.9f * std::min(w, h);
   float xo = 0.5f * (w - s);
   float yo = 0.5f * (h - s) + s;
-  float xscale = s / 0xff;
-  float yscale = -s / 0xff;
+  float xscale = s / 0xffffffff;
+  float yscale = -s / 0xffffffff;
 
   SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
 
@@ -85,9 +85,18 @@ SDL_AppResult SDL_AppIterate(void* appstate)
     lastUpdateTicks = ticks;
 
     Pos p {
-      .x = uint8_t(std::rand()),
-      .y = uint8_t(std::rand())
+      .x = uint32_t(std::rand()),
+      .y = uint32_t(std::rand())
     };
+
+    p.x ^= p.x << 13;
+    p.x ^= p.x >> 17;
+    p.x ^= p.x << 5;
+
+    p.y ^= p.y << 13;
+    p.y ^= p.y >> 17;
+    p.y ^= p.y << 5;
+
     insertVertex(*tri, p);
   }
 

@@ -165,12 +165,12 @@ namespace {
   int areaSign(const Pos& p1, const Pos& p2, const Pos& p3)
   {
 #if 1
-    uint64_t x1 = uint64_t(p1.x) << 24u;    // 32 bits
-    uint64_t y1 = uint64_t(p1.y) << 24u;
-    uint64_t x2 = uint64_t(p2.x) << 24u;
-    uint64_t y2 = uint64_t(p2.y) << 24u;
-    uint64_t x3 = uint64_t(p3.x) << 24u;
-    uint64_t y3 = uint64_t(p3.y) << 24u;
+    uint64_t x1 = p1.x; // 32 bits
+    uint64_t y1 = p1.y;
+    uint64_t x2 = p2.x;
+    uint64_t y2 = p2.y;
+    uint64_t x3 = p3.x;
+    uint64_t y3 = p3.y;
 
     Int<2> x1y2 { x1 * y2 };    // 64 bits extended to 128
     Int<2> x2y3 { x2 * y3 };
@@ -207,14 +207,14 @@ namespace {
   int isDelaunay(const Pos& p1, const Pos& p2, const Pos& p3, const Pos& p4)
   {
   #if 1
-    uint64_t x1 = uint64_t(p1.x) << 24u;    // 32 bits
-    uint64_t y1 = uint64_t(p1.y) << 24u;
-    uint64_t x2 = uint64_t(p2.x) << 24u;
-    uint64_t y2 = uint64_t(p2.y) << 24u;
-    uint64_t x3 = uint64_t(p3.x) << 24u;
-    uint64_t y3 = uint64_t(p3.y) << 24u;
-    uint64_t x4 = uint64_t(p4.x) << 24u;
-    uint64_t y4 = uint64_t(p4.y) << 24u;
+    uint64_t x1 = p1.x; // 32 bits
+    uint64_t y1 = p1.y;
+    uint64_t x2 = p2.x;
+    uint64_t y2 = p2.y;
+    uint64_t x3 = p3.x;
+    uint64_t y3 = p3.y;
+    uint64_t x4 = p4.x;
+    uint64_t y4 = p4.y;
 
     Int<2> x1y2 { .word = { x1 * y2 } };    // 64 bits extended to 128
     Int<2> x1y3 { .word = { x1 * y3 } };
@@ -578,9 +578,9 @@ Triangulation::Triangulation()
 {
   VtxIx v = allocVtx(*this, 4);
   vtx[v + 0] = { .pos = { 0,  0 } };
-  vtx[v + 1] = { .pos = { 255,  0 } };
-  vtx[v + 2] = { .pos = { 255,  255 } };
-  vtx[v + 3] = { .pos = { 0,  255 }  };
+  vtx[v + 1] = { .pos = { ~0u,  0 } };
+  vtx[v + 2] = { .pos = { ~0u, ~0u } };
+  vtx[v + 3] = { .pos = { 0,  ~0u }  };
 
   HeIx h = allocHe(*this, 6);
 
