@@ -1,12 +1,8 @@
-// tri.cpp : This file contains the 'main' function. Program execution begins and ends there.
-//
-
 #include <cassert>
-
-#include <SDL3/SDL.h>
 #include <algorithm>
 
 #define SDL_MAIN_USE_CALLBACKS
+#include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
 #include "../src/delaunay.h"
@@ -21,7 +17,6 @@ namespace {
   Uint64 lastUpdateTicks = 0;
 
   bool run = true;
-
 
 }
 
@@ -94,6 +89,7 @@ SDL_AppResult SDL_AppIterate(void* appstate)
       .y = uint32_t(std::rand())
     };
 
+    // hash the points to make limited rand() range cover the entire uint32_t-range
     p.x ^= p.x << 13;
     p.x ^= p.x >> 17;
     p.x ^= p.x << 5;
@@ -138,13 +134,8 @@ SDL_AppResult SDL_AppIterate(void* appstate)
       .h = 5
     };
     SDL_RenderRect(renderer, &rect);
-
-    //SDL_RenderPoint(renderer, x, y);
   }
 
-
-//  SDL_RenderRect()
-  
   SDL_RenderPresent(renderer);
   return SDL_APP_CONTINUE;
 }

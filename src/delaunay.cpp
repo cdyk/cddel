@@ -7,6 +7,10 @@
 
 namespace {
 
+  // -------------------------------------------------------------------------
+  //
+  // Generic utilities
+
   void* xmalloc(size_t size)
   {
     void* rv = malloc(size);
@@ -35,6 +39,8 @@ namespace {
   }
 
   // -------------------------------------------------------------------------
+  //
+  // Multi-word integer math
 
   template<size_t N>
   struct Int {
@@ -100,6 +106,192 @@ namespace {
   }
 
   // -------------------------------------------------------------------------
+  //
+  // Geometric predicates
+
+  int areaSign(const Pos& p1, const Pos& p2, const Pos& p3)
+  {
+#if 1
+    uint64_t x1 = p1.x; // 32 bits
+    uint64_t y1 = p1.y;
+    uint64_t x2 = p2.x;
+    uint64_t y2 = p2.y;
+    uint64_t x3 = p3.x;
+    uint64_t y3 = p3.y;
+
+    Int<2> x1y2{ x1 * y2 };    // 64 bits extended to 128
+    Int<2> x2y3{ x2 * y3 };
+    Int<2> x3y1{ x3 * y1 };
+    Int<2> a = add(add(x1y2, x2y3), x3y1);  // 66 bits
+
+    Int<2> x1y3{ x1 * y3 };
+    Int<2> x2y1{ x2 * y1 };
+    Int<2> x3y2{ x3 * y2 };
+    Int<2> b = add(add(x1y3, x2y1), x3y2);  // 66 bits
+
+    Int<2> test = sub(a, b);
+
+    if ((test.word[1] | test.word[0])) {
+      return int64_t(test.word[1]) < 0 ? -1 : 1;
+    }
+#else
+    uint16_t x1y2 = p1.x * p2.y;
+    uint16_t x2y3 = p2.x * p3.y;
+    uint16_t x3y1 = p3.x * p1.y;
+    uint32_t a = uint32_t(x1y2) + uint32_t(x2y3) + uint32_t(x3y1);
+
+    uint16_t x1y3 = p1.x * p3.y;
+    uint16_t x2y1 = p2.x * p1.y;
+    uint16_t x3y2 = p3.x * p2.y;
+    uint32_t b = uint32_t(x1y3) + uint32_t(x2y1) + uint32_t(x3y2);
+
+    if (a < b) return -1;
+    if (b < a) return 1;
+#endif
+    return 0;
+  }
+
+  int isDelaunay(const Pos& p1, const Pos& p2, const Pos& p3, const Pos& p4)
+  {
+#if 1
+    uint64_t x1 = p1.x; // 32 bits
+    uint64_t y1 = p1.y;
+    uint64_t x2 = p2.x;
+    uint64_t y2 = p2.y;
+    uint64_t x3 = p3.x;
+    uint64_t y3 = p3.y;
+    uint64_t x4 = p4.x;
+    uint64_t y4 = p4.y;
+
+    Int<2> x1y2{ .word = { x1 * y2 } };    // 64 bits extended to 128
+    Int<2> x1y3{ .word = { x1 * y3 } };
+    Int<2> x1y4{ .word = { x1 * y4 } };
+    Int<2> x2y3{ .word = { x2 * y3 } };
+    Int<2> x2y1{ .word = { x2 * y1 } };
+    Int<2> x3y1{ .word = { x3 * y1 } };
+    Int<2> x3y2{ .word = { x3 * y2 } };
+    Int<2> x3y4{ .word = { x3 * y4 } };
+    Int<2> x4y1{ .word = { x4 * y1 } };
+    Int<2> x4y3{ .word = { x4 * y3 } };
+
+    Int<2> sin_123_a = add(add(x3y1, x1y2), x2y3);  // 66 bits
+    Int<2> sin_123_b = add(add(x2y1, x3y2), x1y3);
+    assert((sin_123_a.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
+    assert((sin_123_b.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
+    Int<2> sin_123 = sub(sin_123_a, sin_123_b);     // 67 bits
+
+    Int<2> sin_341_a = add(add(x4y1, x1y3), x3y4);
+    Int<2> sin_341_b = add(add(x4y3, x1y4), x3y1);
+    assert((sin_341_a.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
+    assert((sin_341_b.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
+    Int<2> sin_341 = sub(sin_341_a, sin_341_b);     // 67 bits
+
+    Int<2> x1x2{ .word = { x1 * x2 } };
+    Int<2> x1x3{ .word = { x1 * x3 } };
+    Int<2> x1x4{ .word = { x1 * x4 } };
+    Int<2> x2x2{ .word = { x2 * x2 } };
+    Int<2> x2x3{ .word = { x2 * x3 } };
+    Int<2> x3x4{ .word = { x3 * x4 } };
+    Int<2> x4x4{ .word = { x4 * x4 } };
+    Int<2> y1y2{ .word = { y1 * y2 } };
+    Int<2> y1y3{ .word = { y1 * y3 } };
+    Int<2> y1y4{ .word = { y1 * y4 } };
+    Int<2> y2y2{ .word = { y2 * y2 } };
+    Int<2> y2y3{ .word = { y2 * y3 } };
+    Int<2> y3y4{ .word = { y3 * y4 } };
+    Int<2> y4y4{ .word = { y4 * y4 } };
+
+    Int<2> cos_123_a = add(add(x2x2, x1x3), add(y2y2, y1y3));   // 66 bits
+    Int<2> cos_123_b = add(add(y2y3, x1x2), add(x2x3, y1y2));
+    assert((cos_123_a.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
+    assert((cos_123_b.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
+    Int<2> cos_123 = sub(cos_123_a, cos_123_b);                // 67 bits
+
+    Int<2> cos_341_a = add(add(x1x3, x4x4), add(y1y3, y4y4));
+    Int<2> cos_341_b = add(add(y1y4, y3y4), add(x1x4, x3x4));
+    assert((cos_341_a.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
+    assert((cos_341_b.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
+    Int<2> cos_341 = sub(cos_341_a, cos_341_b);                // 67 bits
+
+    Int<4> sin_123_cos_341 = muls(sin_123, cos_341);            // 134 bits (3 words suffices)
+    Int<4> cos_123_sin_341 = muls(cos_123, sin_341);
+
+    Int<4> test = add(sin_123_cos_341, cos_123_sin_341);
+
+    if ((test.word[3] | test.word[2] | test.word[1] | test.word[0])) {
+      return  int64_t(test.word[3]) < 0 ? -1 : 1;
+    }
+#else
+    // Assuming the quadrilateral is split with the diagonal [p1,p3].
+    // If pi < angle_123 + angle_341, the diagonal should be swapped.
+    //
+    // Since angle_123 + angle_341 < 2pi:
+    //
+    // pi < angle_123 + angle_341 <=>  sin_123 cos_341 + cos_123 sin_341 < 0
+
+    uint16_t x1y2 = p1.x * p2.y;
+    uint16_t x1y3 = p1.x * p3.y;
+    uint16_t x1y4 = p1.x * p4.y;
+
+    uint16_t x2y3 = p2.x * p3.y;
+    uint16_t x2y1 = p2.x * p1.y;
+
+    uint16_t x3y1 = p3.x * p1.y;
+    uint16_t x3y2 = p3.x * p2.y;
+    uint16_t x3y4 = p3.x * p4.y;
+
+    uint16_t x4y1 = p4.x * p1.y;
+    uint16_t x4y3 = p4.x * p3.y;
+
+    // sin_123 = (x3 - x2) (y1 - y2) - (x1 - x2) (y3 - y2)
+    //         = (x3y1 + x1y2 + x2y3) - (x2y1 + x3y2 + x1y3)
+    int32_t sin_123 = (int32_t(x3y1) + int32_t(x1y2) + int32_t(x2y3))
+      - (int32_t(x2y1) + int32_t(x3y2) + int32_t(x1y3));
+
+    // sin_341 = (x1 - x4) (y3 - y4) - (x3 - x4) (y1 - y4)
+    //         = (x4y1 + x1y3 + x3y4) - (x4y3 + x1y4 + x3y1)
+    int32_t sin_341 = (int32_t(x4y1) + int32_t(x1y3) + int32_t(x3y4))
+      - (int32_t(x4y3) + int32_t(x1y4) + int32_t(x3y1));
+
+    uint16_t x1x2 = p1.x * p2.x;
+    uint16_t x1x3 = p1.x * p3.x;
+    uint16_t x1x4 = p1.x * p4.x;
+    uint16_t x2x2 = p2.x * p2.x;
+    uint16_t x2x3 = p2.x * p3.x;
+    uint16_t x3x4 = p3.x * p4.x;
+    uint16_t x4x4 = p4.x * p4.x;
+
+    uint16_t y1y2 = p1.y * p2.y;
+    uint16_t y1y3 = p1.y * p3.y;
+    uint16_t y1y4 = p1.y * p4.y;
+    uint16_t y2y2 = p2.y * p2.y;
+    uint16_t y2y3 = p2.y * p3.y;
+    uint16_t y3y4 = p3.y * p4.y;
+    uint16_t y4y4 = p4.y * p4.y;
+
+    // cos_123 = (x3 - x2) (x1 - x2) + (y3 - y2) (y1 - y2)
+    //         = (x2x2 + x1x3 + y2y2 + y1y3) - (y2y3 + x1x2 + x2x3 + y1y2)
+
+    int32_t cos_123 = (x2x2 + x1x3 + y2y2 + y1y3) - (y2y3 + x1x2 + x2x3 + y1y2);
+
+
+    //
+    // cos_341 = (x1 - x4) (x3 - x4) + (y1 - y4) (y3 - y4)]
+    //         = (x1x3  + x4x4 + y1y3 + y4^2) - y1y4 - y3y4  - x1 x4 - x3 x4
+    int32_t cos_341 = (int32_t(x1x3) + int32_t(x4x4) + int32_t(y1y3) + int32_t(y4y4))
+      - (int32_t(y1y4) + int32_t(y3y4) + int32_t(x1x4) + int32_t(x3x4));
+
+
+    int64_t test = sin_123 * cos_341 + cos_123 * sin_341;
+    if (0 < test) return 1;
+    if (test < 0) return -1;
+#endif
+    return 0;
+  }
+
+  // -------------------------------------------------------------------------
+  //
+  // Half-edge data structure management
 
   VtxIx& vertex(const Triangulation& T, HeIx he)
   {
@@ -162,186 +354,6 @@ namespace {
     return firstIx;
   }
 
-  int areaSign(const Pos& p1, const Pos& p2, const Pos& p3)
-  {
-#if 1
-    uint64_t x1 = p1.x; // 32 bits
-    uint64_t y1 = p1.y;
-    uint64_t x2 = p2.x;
-    uint64_t y2 = p2.y;
-    uint64_t x3 = p3.x;
-    uint64_t y3 = p3.y;
-
-    Int<2> x1y2 { x1 * y2 };    // 64 bits extended to 128
-    Int<2> x2y3 { x2 * y3 };
-    Int<2> x3y1 { x3 * y1 };
-    Int<2> a = add(add(x1y2, x2y3), x3y1);  // 66 bits
-
-    Int<2> x1y3 { x1 * y3 };
-    Int<2> x2y1 { x2 * y1 };
-    Int<2> x3y2 { x3 * y2 };
-    Int<2> b = add(add(x1y3, x2y1), x3y2);  // 66 bits
-
-    Int<2> test = sub(a, b);
-
-    if ((test.word[1] | test.word[0])) {
-      return int64_t(test.word[1]) < 0 ? -1 : 1;
-    }
-#else
-    uint16_t x1y2 = p1.x * p2.y;
-    uint16_t x2y3 = p2.x * p3.y;
-    uint16_t x3y1 = p3.x * p1.y;
-    uint32_t a = uint32_t(x1y2) + uint32_t(x2y3) + uint32_t(x3y1);
-
-    uint16_t x1y3 = p1.x * p3.y;
-    uint16_t x2y1 = p2.x * p1.y;
-    uint16_t x3y2 = p3.x * p2.y;
-    uint32_t b = uint32_t(x1y3) + uint32_t(x2y1) + uint32_t(x3y2);
-
-    if (a < b) return -1;
-    if (b < a) return 1;
-#endif
-    return 0;
-  }
-
-  int isDelaunay(const Pos& p1, const Pos& p2, const Pos& p3, const Pos& p4)
-  {
-  #if 1
-    uint64_t x1 = p1.x; // 32 bits
-    uint64_t y1 = p1.y;
-    uint64_t x2 = p2.x;
-    uint64_t y2 = p2.y;
-    uint64_t x3 = p3.x;
-    uint64_t y3 = p3.y;
-    uint64_t x4 = p4.x;
-    uint64_t y4 = p4.y;
-
-    Int<2> x1y2 { .word = { x1 * y2 } };    // 64 bits extended to 128
-    Int<2> x1y3 { .word = { x1 * y3 } };
-    Int<2> x1y4 { .word = { x1 * y4 } };
-    Int<2> x2y3 { .word = { x2 * y3 } };
-    Int<2> x2y1 { .word = { x2 * y1 } };
-    Int<2> x3y1 { .word = { x3 * y1 } };
-    Int<2> x3y2 { .word = { x3 * y2 } };
-    Int<2> x3y4 { .word = { x3 * y4 } };
-    Int<2> x4y1 { .word = { x4 * y1 } };
-    Int<2> x4y3 { .word = { x4 * y3 } };
-
-    Int<2> sin_123_a = add(add(x3y1, x1y2), x2y3);  // 66 bits
-    Int<2> sin_123_b = add(add(x2y1, x3y2), x1y3);
-    assert((sin_123_a.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
-    assert((sin_123_b.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
-    Int<2> sin_123 = sub(sin_123_a, sin_123_b);     // 67 bits
-
-    Int<2> sin_341_a = add(add(x4y1, x1y3), x3y4);
-    Int<2> sin_341_b = add(add(x4y3, x1y4), x3y1);
-    assert((sin_341_a.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
-    assert((sin_341_b.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
-    Int<2> sin_341 = sub(sin_341_a, sin_341_b);     // 67 bits
-
-    Int<2> x1x2 { .word = { x1 * x2 } };
-    Int<2> x1x3 { .word = { x1 * x3 } };
-    Int<2> x1x4 { .word = { x1 * x4 } };
-    Int<2> x2x2 { .word = { x2 * x2 } };
-    Int<2> x2x3 { .word = { x2 * x3 } };
-    Int<2> x3x4 { .word = { x3 * x4 } };
-    Int<2> x4x4 { .word = { x4 * x4 } };
-    Int<2> y1y2 { .word = { y1 * y2 } };
-    Int<2> y1y3 { .word = { y1 * y3 } };
-    Int<2> y1y4 { .word = { y1 * y4 } };
-    Int<2> y2y2 { .word = { y2 * y2 } };
-    Int<2> y2y3 { .word = { y2 * y3 } };
-    Int<2> y3y4 { .word = { y3 * y4 } };
-    Int<2> y4y4 { .word = { y4 * y4 } };
-
-    Int<2> cos_123_a = add(add(x2x2, x1x3), add(y2y2, y1y3));   // 66 bits
-    Int<2> cos_123_b = add(add(y2y3, x1x2), add(x2x3, y1y2));
-    assert((cos_123_a.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
-    assert((cos_123_b.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
-    Int<2> cos_123 = sub(cos_123_a, cos_123_b);                // 67 bits
-
-    Int<2> cos_341_a = add(add(x1x3, x4x4), add(y1y3, y4y4));
-    Int<2> cos_341_b = add(add(y1y4, y3y4), add(x1x4, x3x4));
-    assert((cos_341_a.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
-    assert((cos_341_b.word[1] & (~uint64_t(0) << (66 - 64))) == 0);
-    Int<2> cos_341 = sub(cos_341_a, cos_341_b);                // 67 bits
-
-    Int<4> sin_123_cos_341 = muls(sin_123, cos_341);            // 134 bits (3 words suffices)
-    Int<4> cos_123_sin_341 = muls(cos_123, sin_341);
-
-    Int<4> test = add(sin_123_cos_341, cos_123_sin_341);
-
-    if ((test.word[3] | test.word[2] | test.word[1] | test.word[0])) {
-      return  int64_t(test.word[3]) < 0 ? -1 : 1;
-    }
-#else
-    // Assuming the quadrilateral is split with the diagonal [p1,p3].
-    // If pi < angle_123 + angle_341, the diagonal should be swapped.
-    //
-    // Since angle_123 + angle_341 < 2pi:
-    //
-    // pi < angle_123 + angle_341 <=>  sin_123 cos_341 + cos_123 sin_341 < 0
-
-    uint16_t x1y2 = p1.x * p2.y;
-    uint16_t x1y3 = p1.x * p3.y;
-    uint16_t x1y4 = p1.x * p4.y;
-
-    uint16_t x2y3 = p2.x * p3.y;
-    uint16_t x2y1 = p2.x * p1.y;
-
-    uint16_t x3y1 = p3.x * p1.y;
-    uint16_t x3y2 = p3.x * p2.y;
-    uint16_t x3y4 = p3.x * p4.y;
-
-    uint16_t x4y1 = p4.x * p1.y;
-    uint16_t x4y3 = p4.x * p3.y;
-
-    // sin_123 = (x3 - x2) (y1 - y2) - (x1 - x2) (y3 - y2)
-    //         = (x3y1 + x1y2 + x2y3) - (x2y1 + x3y2 + x1y3)
-    int32_t sin_123 = (int32_t(x3y1) + int32_t(x1y2) + int32_t(x2y3))
-                    - (int32_t(x2y1) + int32_t(x3y2) + int32_t(x1y3));
-
-    // sin_341 = (x1 - x4) (y3 - y4) - (x3 - x4) (y1 - y4)
-    //         = (x4y1 + x1y3 + x3y4) - (x4y3 + x1y4 + x3y1)
-    int32_t sin_341 = (int32_t(x4y1) + int32_t(x1y3) + int32_t(x3y4))
-                    - (int32_t(x4y3) + int32_t(x1y4) + int32_t(x3y1));
-
-    uint16_t x1x2 = p1.x * p2.x;
-    uint16_t x1x3 = p1.x * p3.x;
-    uint16_t x1x4 = p1.x * p4.x;
-    uint16_t x2x2 = p2.x * p2.x;
-    uint16_t x2x3 = p2.x * p3.x;
-    uint16_t x3x4 = p3.x * p4.x;
-    uint16_t x4x4 = p4.x * p4.x;
-
-    uint16_t y1y2 = p1.y * p2.y;
-    uint16_t y1y3 = p1.y * p3.y;
-    uint16_t y1y4 = p1.y * p4.y;
-    uint16_t y2y2 = p2.y * p2.y;
-    uint16_t y2y3 = p2.y * p3.y;
-    uint16_t y3y4 = p3.y * p4.y;
-    uint16_t y4y4 = p4.y * p4.y;
-
-    // cos_123 = (x3 - x2) (x1 - x2) + (y3 - y2) (y1 - y2)
-    //         = (x2x2 + x1x3 + y2y2 + y1y3) - (y2y3 + x1x2 + x2x3 + y1y2)
-
-    int32_t cos_123 = (x2x2 + x1x3 + y2y2 + y1y3) - (y2y3 + x1x2 + x2x3 + y1y2);
-
-
-    //
-    // cos_341 = (x1 - x4) (x3 - x4) + (y1 - y4) (y3 - y4)]
-    //         = (x1x3  + x4x4 + y1y3 + y4^2) - y1y4 - y3y4  - x1 x4 - x3 x4
-    int32_t cos_341 = (int32_t(x1x3)  + int32_t(x4x4) + int32_t(y1y3) + int32_t(y4y4))
-                    - (int32_t(y1y4) + int32_t(y3y4) + int32_t(x1x4) + int32_t(x3x4));
-
-
-    int64_t test = sin_123 * cos_341 + cos_123 * sin_341;
-    if (0 < test) return 1;
-    if (test < 0) return -1;
-#endif
-    return 0;
-  }
-
   void disconnectHalfEdge(Triangulation& triang, HeIx he)
   {
     HalfEdge& e = triang.he[he];
@@ -383,10 +395,20 @@ namespace {
                        HeIx he1, HeIx tw1, VtxIx v1,
                        HeIx he2, HeIx tw2, VtxIx v2)
   {
+    const Pos& p0 = triang.vtx[v0].pos;
+    const Pos& p1 = triang.vtx[v1].pos;
+    const Pos& p2 = triang.vtx[v2].pos;
+    int sign = areaSign(p0, p1, p2);
+    assert(0 < sign);
+
     connectHalfEdge(triang, he0, he1, tw0, v0);
     connectHalfEdge(triang, he1, he2, tw1, v1);
     connectHalfEdge(triang, he2, he0, tw2, v2);
   }
+
+  // -------------------------------------------------------------------------
+  //
+  // Operations on top of the half-edge data structure
 
   HeIx findContainingTriangle(const Triangulation& triang, bool (&inside)[3], const Pos& pos, HeIx startingPoint)
   {
