@@ -20,6 +20,8 @@ namespace {
 
   Uint64 lastUpdateTicks = 0;
 
+  bool run = true;
+
 
 }
 
@@ -32,7 +34,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char** argv)
   }
 
 
-  if (!SDL_CreateWindowAndRenderer("Triangles", 1280, 1024, 0, &window, &renderer)) {
+  if (!SDL_CreateWindowAndRenderer("Triangles", 1920, 1080, 0, &window, &renderer)) {
     SDL_Log("Couldn't create window/renderer: %s", SDL_GetError());
     return SDL_APP_FAILURE;
   }
@@ -59,6 +61,9 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event)
   else if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_ESCAPE) {
     return SDL_APP_SUCCESS;
   }
+  else if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_SPACE) {
+    run = !run;
+  }
   return SDL_APP_CONTINUE;
 }
 
@@ -81,7 +86,7 @@ SDL_AppResult SDL_AppIterate(void* appstate)
   SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
 
   Uint64 ticks = SDL_GetTicks();
-  if (300 < ticks - lastUpdateTicks) {
+  if (run && 0 < ticks - lastUpdateTicks) {
     lastUpdateTicks = ticks;
 
     Pos p {
